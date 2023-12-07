@@ -68,7 +68,7 @@ int directory_put(inode_t *di, const char *name, int inum){
 
     int size = di->size / sizeof(dirent_t);
     for(int i = 1; i < size; i++){
-        if(dir[i].inum == -ENOENT){
+        if(dir[i].inum == -1){
             dir[i] = newFile;
             di->size = di->size + sizeof(dirent_t);
             return 0;
@@ -89,7 +89,7 @@ int directory_delete(inode_t *di, const char *name){
     for(int i = 0; i < di->size / sizeof(dirent_t); i++){
         if(strcmp(name, dir[i].name) == 0){
             int inum = dir[i].inum;
-            dir[i].inum = -ENOENT;
+            dir[i].inum = -1;
             inode_t *inode = get_inode(inum);
             inode->refs -= 1;
             if(inode->refs == 0){
@@ -99,7 +99,7 @@ int directory_delete(inode_t *di, const char *name){
         }
     }
 
-    return -ENOENT;
+    return -1;
 }
 
 // Return list of files at given path
@@ -111,7 +111,7 @@ slist_t *directory_list(const char *path){
     slist_t *list = NULL;
 
     for(int i = 0; i < inode->size / sizeof(dirent_t); i++){
-        if(dir[i].inum != -ENOENT){
+        if(dir[i].inum != -1){
             list = slist_cons(dir[i].name, list);
         }
     }

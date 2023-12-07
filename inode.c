@@ -48,7 +48,7 @@ int alloc_inode(){
         new_inode->ptrs[0] = alloc_block();
         return inum;
     } else {
-        return -ENOENT;
+        return -1;
     }
 }
 // Free inode for given inum

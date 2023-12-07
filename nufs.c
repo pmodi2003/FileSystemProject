@@ -50,7 +50,11 @@ int nufs_getattr(const char *path, struct stat *st) {
 
   printf("getattr(%s) -> (%d) {mode: %04o, size: %ld}\n", path, rv, st->st_mode,
          st->st_size);
-  return rv;
+  if (rv == -1) {
+    return -ENOENT;
+  } else {
+    return 0;
+  }
 }
 
 // implementation for: man 2 readdir
@@ -156,7 +160,7 @@ int nufs_open(const char *path, struct fuse_file_info *fi) {
   return rv;
 }
 
-// Actually read data
+// Actually read data from file at given path
 int nufs_read(const char *path, char *buf, size_t size, off_t offset,
               struct fuse_file_info *fi) {
   int rv = storage_read(path, buf, size, offset);
@@ -164,7 +168,7 @@ int nufs_read(const char *path, char *buf, size_t size, off_t offset,
   return rv;
 }
 
-// Actually write data
+// Actually write data to file at given path
 int nufs_write(const char *path, const char *buf, size_t size, off_t offset,
                struct fuse_file_info *fi) {
   int rv = storage_write(path, buf, size, offset);

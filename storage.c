@@ -32,7 +32,7 @@ int storage_access(const char *path){
         inode->accessed_time = time(NULL);
         return 0;
     } else {
-        return -ENOENT;
+        return -1;
     }
 }
 
@@ -50,7 +50,7 @@ int storage_stat(const char *path, struct stat *st){
         st->st_nlink = inode->refs;
         return 0;
     } else {
-        return -ENOENT;
+        return -1;
     }
 }
 
@@ -162,7 +162,7 @@ int storage_mknod(const char *path, int mode){
     if((par_inum = path_lookup(par_dir)) == -ENOENT){
         free(cur_dir);
         free(par_dir);
-        return -ENOENT;
+        return -1;
     }
 
     int new_inode_inum = alloc_inode();
@@ -185,7 +185,7 @@ int storage_mknod(const char *path, int mode){
 int storage_chmod(const char *path, int mode){
     int inum;
     if((inum = path_lookup(path)) == -ENOENT){
-        return -ENOENT;
+        return -1;
     }
 
     inode_t *inode = get_inode(inum);
@@ -226,7 +226,7 @@ int storage_unlink(const char *path){
 int storage_link(const char *from, const char *to){
     int inum;
     if((inum = path_lookup(to)) == -ENOENT){
-        return -ENOENT;
+        return -1;
     }
 
     char *cur_dir = malloc(DIR_NAME_LENGTH);
@@ -270,7 +270,7 @@ int storage_rename(const char *from, const char *to){
 int storage_set_time(const char *path, const struct timespec ts[2]){
     int inum;
     if ((inum = path_lookup(path)) == -ENOENT){
-        return -ENOENT;
+        return -1;
     }
 
     inode_t *inode = get_inode(inum);
