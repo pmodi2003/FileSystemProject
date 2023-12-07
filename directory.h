@@ -8,9 +8,9 @@
 
 #define DIR_NAME_LENGTH 48
 
-#include "blocks.h"
+#include "helpers/blocks.h"
 #include "inode.h"
-#include "slist.h"
+#include "helpers/slist.h"
 
 typedef struct dirent {
   char name[DIR_NAME_LENGTH];
@@ -20,9 +20,10 @@ typedef struct dirent {
 
 void directory_init();
 int directory_lookup(inode_t *di, const char *name);
+int path_lookup(const char *path);
 int directory_put(inode_t *di, const char *name, int inum);
 int directory_delete(inode_t *di, const char *name);
 slist_t *directory_list(const char *path);
-void print_directory(inode_t *dd);
+void print_directory(inode_t *di);
 
 #endif

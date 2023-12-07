@@ -84,7 +84,7 @@ int nufs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     cur = cur->next;
   }
 
-  s_free(head);
+  slist_free(head);
 
   printf("readdir(%s) -> %d\n", path, rv);
   return 0;
