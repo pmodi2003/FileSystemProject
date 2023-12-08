@@ -100,7 +100,7 @@ int directory_delete(inode_t *di, const char *name){
     while(dir_ind < di->files){
         if(strcmp(name, iter_dir->name) == 0){
             int inum = iter_dir->inum;
-            if(iter_dir < di->files - 1){
+            if(dir_ind < di->files - 1){
                 dirent_t *next_file = iter_dir + sizeof(dirent_t);
                 int num_files_below = di->files - dir_ind - 1;
                 memmove(iter_dir, next_file, num_files_below * sizeof(dirent_t));
@@ -143,7 +143,7 @@ slist_t *directory_list(const char *path){
     
     int dir_ind = 0;
     while(dir_ind < inode->files){
-        list = s_cons(iter_dir->name, list);
+        list = slist_cons(iter_dir->name, list);
         iter_dir += sizeof(dirent_t);
         dir_ind++;
     }

@@ -140,7 +140,7 @@ int storage_mknod(const char *path, int mode){
     memset(par_dir, 0, strlen(path) + 40);
     par_dir[0] = '/';
     
-    slist_t *path_list = slist_explode(path + 1, "/");
+    slist_t *path_list = slist_explode(path + 1,  '/');
     slist_t *iter_path = path_list;
 
     while(iter_path != NULL){
@@ -155,7 +155,7 @@ int storage_mknod(const char *path, int mode){
             new_inode->mode = mode;
 
             if(mode & 040000 == 040000){
-                directory_put(new_inode, "..", tree_lookup(par_dir));
+                directory_put(new_inode, "..", path_lookup(par_dir));
                 directory_put(new_inode, ".", new_inum);
                 new_inode->refs = 2;
                 new_inode->files = 2;

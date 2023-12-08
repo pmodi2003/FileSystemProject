@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "inode.h"
 #include "helpers/bitmap.h"
 
@@ -62,7 +63,5 @@ void free_inode(int inum){
 
     inode_t *inode = get_inode(inum);
     free_block(inode->block);
-
-    shrink_inode(inode, 0);
     memset(inode, 0, sizeof(inode_t));
 }
