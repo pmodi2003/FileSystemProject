@@ -12,10 +12,10 @@
 #include "inode.h"
 #include "helpers/slist.h"
 
+// dirent_t size: 54 bytes
 typedef struct dirent {
-  char name[DIR_NAME_LENGTH];
-  int inum;
-  char _reserved[12];
+  char name[DIR_NAME_LENGTH]; // name of entry
+  int inum; //inode number of entry
 } dirent_t;
 
 void directory_init();

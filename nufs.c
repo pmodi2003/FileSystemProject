@@ -18,15 +18,7 @@
 // implementation for: man 2 access
 // Checks if a file exists.
 int nufs_access(const char *path, int mask) {
-  int rv = 0;
-
-  // Only the root directory and our simulated file are accessible for now...
-  if (strcmp(path, "/") == 0 || strcmp(path, "/hello.txt") == 0) {
-    rv = 0;
-  } else { // ...others do not exist
-    rv = storage_access(path);
-  }
-
+  int rv = storage_access(path);
   printf("access(%s, %04o) -> %d\n", path, mask, rv);
   return rv;
 }
@@ -35,26 +27,10 @@ int nufs_access(const char *path, int mask) {
 // Implementation for: man 2 stat
 // This is a crucial function.
 int nufs_getattr(const char *path, struct stat *st) {
-  int rv = 0;
-
-  // Return some metadata for the root directory...
-  if (strcmp(path, "/") == 0) {
-    st->st_mode = 040755; // directory
-    st->st_size = 0;
-    st->st_uid = getuid();
-    st->st_nlink = 1;
-  } else { // ...other files do not exist on this filesystem
-    rv = storage_stat(path, st);
-    st->st_uid = getuid();
-  }
-
+  int rv = storage_stat(path, st);
   printf("getattr(%s) -> (%d) {mode: %04o, size: %ld}\n", path, rv, st->st_mode,
          st->st_size);
-  if (rv == -1) {
-    return -ENOENT;
-  } else {
-    return 0;
-  }
+  return rv;
 }
 
 // implementation for: man 2 readdir
@@ -69,26 +45,27 @@ int nufs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
   filler(buf, ".", &st, 0);
 
-  slist_t *head = storage_list(path);
-  slist_t *cur = head;
-  while (cur != NULL){
+  slist_t *dir = storage_list(path);
+  slist_t *iter_dir = dir;
+  while (iter_dir != NULL){
     char cur_dir[strlen(path) + 48];
     strcpy(cur_dir, path);
 
     if(path[strlen(path)-1] == '/'){
-      cur_dir[strlen(path)] = 0;
+      cur_dir[strlen(path)] = '\0';
     } else {
       cur_dir[strlen(path)] = '/';
-      cur_dir[strlen(path)+1] = 0;
+      cur_dir[strlen(path)+1] = '\0';
     }
 
-    strcat(cur_dir, cur->data);
-    nufs_getattr(cur_dir, &st);
-    filler(buf, cur->data, &st, 0);
-    cur = cur->next;
+    strcat(cur_dir, iter_dir->data);
+    rv = nufs_getattr(cur_dir, &st);
+    assert(rv == 0);
+    filler(buf, iter_dir->data, &st, 0);
+    iter_dir = iter_dir->next;
   }
 
-  slist_free(head);
+  slist_free(dir);
 
   printf("readdir(%s) -> %d\n", path, rv);
   return 0;
@@ -125,7 +102,7 @@ int nufs_link(const char *from, const char *to) {
 }
 
 int nufs_rmdir(const char *path) {
-  int rv = storage_unlink(path);
+  int rv = storage_rmdir(path);
   printf("rmdir(%s) -> %d\n", path, rv);
   return rv;
 }

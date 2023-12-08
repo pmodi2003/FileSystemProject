@@ -21,6 +21,9 @@
 #include "blocks.h"
 
 const int BLOCK_COUNT = 256; // we split the "disk" into 256 blocks
+const int BITMAP_BLOCKS = 1; // number of blocks dedicated to data and inode bitmaps
+const int INODE_BLOCKS = 2; // number of blocks dedicated inodes
+const int DATA_BLOCKS = BLOCK_COUNT - BITMAP_BLOCKS - INODE_BLOCKS; // number of blocks dedicated to data
 const int BLOCK_SIZE = 4096; // = 4K
 const int NUFS_SIZE = BLOCK_SIZE * BLOCK_COUNT; // = 1MB
 
