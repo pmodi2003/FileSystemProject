@@ -10,10 +10,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "storage.h"
-
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
+
+#include "storage.h"
 
 // implementation for: man 2 access
 // Checks if a file exists.
@@ -28,8 +28,9 @@ int nufs_access(const char *path, int mask) {
 // This is a crucial function.
 int nufs_getattr(const char *path, struct stat *st) {
   int rv = storage_stat(path, st);
+  st->st_uid = getuid();
   printf("getattr(%s) -> (%d) {mode: %04o, size: %ld}\n", path, rv, st->st_mode,
-         st->st_size);
+          st->st_size);
   return rv;
 }
 
@@ -39,29 +40,41 @@ int nufs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                  off_t offset, struct fuse_file_info *fi) {
   struct stat st;
   int rv;
-
-  rv = nufs_getattr(path, &st);
-  assert(rv == 0);
-
-  filler(buf, ".", &st, 0);
+  char cur_dir[strlen(path) + 48];
 
   slist_t *dir = storage_list(path);
   slist_t *iter_dir = dir;
   while (iter_dir != NULL){
-    char cur_dir[strlen(path) + 48];
-    strcpy(cur_dir, path);
+    if(strcmp(path, "/") == 0){
+      cur_dir[0] = '/';
+      
+      int cur_dir_length = strlen(iter_dir->data);
+      strncpy(cur_dir + 1, iter_dir->data, 48);
 
-    if(path[strlen(path)-1] == '/'){
-      cur_dir[strlen(path)] = '\0';
+      cur_dir[cur_dir_length + 1] = '\0';
+
+      rv = nufs_getattr(cur_dir, &st);
+      assert(rv == 0);
+      if(filler(buf, iter_dir->data, &st, 0) != 0){
+        break;
+      }
     } else {
+      strncpy(cur_dir, path, strlen(path));
       cur_dir[strlen(path)] = '/';
-      cur_dir[strlen(path)+1] = '\0';
-    }
 
-    strcat(cur_dir, iter_dir->data);
-    rv = nufs_getattr(cur_dir, &st);
-    assert(rv == 0);
-    filler(buf, iter_dir->data, &st, 0);
+      int cur_dir_length = strlen(iter_dir->data);
+      strncpy(cur_dir + strlen(path) + 1, iter_dir->data, 48);
+      if (cur_dir_length > 48) {
+        cur_dir_length = 48;
+      }
+      cur_dir[cur_dir_length + strlen(path) + 1] = '\0';
+
+      rv = nufs_getattr(cur_dir, &st);
+      assert(rv == 0);
+      if(filler(buf, iter_dir->data, &st, 0) != 0){
+        break;
+      }    
+    }
     iter_dir = iter_dir->next;
   }
 
@@ -76,7 +89,7 @@ int nufs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 // Note, for this assignment, you can alternatively implement the create
 // function.
 int nufs_mknod(const char *path, mode_t mode, dev_t rdev) {
-  int rv = storage_mknod(path, mode);
+  int rv = storage_mknod(path, mode, 0);
   printf("mknod(%s, %04o) -> %d\n", path, mode, rv);
   return rv;
 }
@@ -84,8 +97,8 @@ int nufs_mknod(const char *path, mode_t mode, dev_t rdev) {
 // most of the following callbacks implement
 // another system call; see section 2 of the manual
 int nufs_mkdir(const char *path, mode_t mode) {
-  int rv = nufs_mknod(path, mode | 040000, 0);
-  printf("mkdir(%s) -> %d\n", path, rv);
+  int rv = storage_mknod(path, mode | 040000, 1);
+  printf("mkdir(%s, %04o) -> %d\n", path, mode, rv);
   return rv;
 }
 
@@ -132,7 +145,7 @@ int nufs_truncate(const char *path, off_t size) {
 // open files.
 // You can just check whether the file is accessible.
 int nufs_open(const char *path, struct fuse_file_info *fi) {
-  int rv = storage_access(path);
+  int rv = nufs_access(path, 0);
   printf("open(%s) -> %d\n", path, rv);
   return rv;
 }
@@ -175,7 +188,6 @@ void nufs_init_ops(struct fuse_operations *ops) {
   ops->getattr = nufs_getattr;
   ops->readdir = nufs_readdir;
   ops->mknod = nufs_mknod;
-  // ops->create   = nufs_create; // alternative to mknod
   ops->mkdir = nufs_mkdir;
   ops->link = nufs_link;
   ops->unlink = nufs_unlink;

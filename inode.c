@@ -29,39 +29,36 @@ inode_t *get_inode(int inum){
     assert(inum < NUM_INODES);
     inode_t *inode_base = (inode_t *) blocks_get_block(INODES_START_BLOCK);
     return inode_base + inum;
-    //return (inode_t *) (inode_base + (inum * sizeof(inode_t)));
 }
 
 // Allocate new inode and return its inum
 int alloc_inode(){
-    int inum = 0; 
-    void *inode_bm = get_inode_bitmap();
+    for (int bit_ind = 0; bit_ind < NUM_INODES; bit_ind++) {
+        if (bitmap_get(get_inode_bitmap(), bit_ind) == 0) {
+            bitmap_put(get_inode_bitmap(), bit_ind, 1);
+            printf("+ alloc_inode() -> %d\n", bit_ind);
+            inode_t *new_inode = get_inode(bit_ind);
+            memset(new_inode, 0, sizeof(inode_t));
 
-    while (bitmap_get(inode_bm, inum) == 1 && inum < BLOCK_COUNT){
-        inum++;
-    }
-    if(inum < BLOCK_COUNT && bitmap_get(inode_bm, inum) == 0){
-        bitmap_put(inode_bm, inum, 1);
-        printf("+ alloc_inode() -> %d\n", inum);
-        inode_t *new_inode = get_inode(inum);
-        memset(new_inode, 0, sizeof(inode_t));
-        new_inode->refs = 1;
-        new_inode->mode = 0100644;
-        new_inode->size = 0;
-        new_inode->block = alloc_block();
-        new_inode->files = 0;
+            new_inode->refs = 0;
+            new_inode->mode = 0100644;
+            new_inode->size = 0;
+            new_inode->block = alloc_block();
+            new_inode->files = 0;
 
-        return inum;
-    } else {
-        return -1;
+            return bit_ind;
+        }
     }
+
+    return -1;
 }
 // Free inode for given inum
 void free_inode(int inum){
-    void *inode_bm = get_inode_bitmap();
-    bitmap_put(inode_bm, inum, 0);
+    bitmap_put(get_inode_bitmap(), inum, 0);
+    printf("+ free_inode(%d)\n", inum);
 
     inode_t *inode = get_inode(inum);
     free_block(inode->block);
+    
     memset(inode, 0, sizeof(inode_t));
 }

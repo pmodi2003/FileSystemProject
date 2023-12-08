@@ -21,41 +21,39 @@
 void storage_init(const char *path){
     // Initialize blocks
     blocks_init(path);
-    // Initialize directory
+        // Initialize directory
     directory_init();
 }
 
 // Access file at given path
 int storage_access(const char *path){
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
         return -ENOENT;
     }
 
-    inode_t *inode = get_inode(inum);
     return 0;
 }
 
 //Update provided stat pointer with file stats of inode at path
 int storage_stat(const char *path, struct stat *st){
-    int inum;
-    // Check if inode was found
-    if((inum = path_lookup(path)) != -ENOENT){
-        inode_t *inode = get_inode(inum);
-        st->st_mode = inode->mode;
-        st->st_size = inode->size;
-        st->st_nlink = inode->refs;
-        return 0;
-    } else {
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
         return -ENOENT;
     }
+    inode_t *inode = get_inode(inum);
+    st->st_mode = inode->mode;
+    st->st_size = inode->size;
+    st->st_nlink = inode->refs;
+    st->st_ino = inum;
+    return 0;
 }
 
 //Read size bytes from given path and offset and copy them to buf
 int storage_read(const char *path, char *buf, size_t size, off_t offset){
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
-        return -1;
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
+        return 0;
     }
     inode_t *inode = get_inode(inum);
 
@@ -79,12 +77,12 @@ int storage_read(const char *path, char *buf, size_t size, off_t offset){
 //Write size bytes to given path and offset and copy them from buf
 int storage_write(const char *path, const char *buf, size_t size, off_t offset){
     if((storage_truncate(path, offset + size)) == -1){
-        return -1;
+        return 0;
     } 
 
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
-        return -1;
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
+        return 0;
     }
     inode_t *inode = get_inode(inum);
 
@@ -108,8 +106,8 @@ int storage_write(const char *path, const char *buf, size_t size, off_t offset){
 // Truncate file at given path to given size
 int storage_truncate(const char *path, off_t size){
     assert(size >= 0);
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
         return -1;
     }
 
@@ -131,30 +129,31 @@ int storage_truncate(const char *path, off_t size){
 }
 
 // Make file/directory at given path with given mode attributes
-int storage_mknod(const char *path, int mode){
+int storage_mknod(const char *path, int mode, int dir){
     if(path_lookup(path) != -ENOENT){
         return -EEXIST;
     }
 
-    char *par_dir = malloc(strlen(path) + 40);
-    memset(par_dir, 0, strlen(path) + 40);
+    char *par_dir = malloc(strlen(path) + 48);
+    memset(par_dir, 0, strlen(path) + 48);
     par_dir[0] = '/';
     
     slist_t *path_list = slist_explode(path + 1,  '/');
     slist_t *iter_path = path_list;
 
     while(iter_path != NULL){
+        printf("Looking at %s\n", iter_path->data);
         int par_inum = path_lookup(par_dir);
         inode_t *par_inode = get_inode(par_inum);
         int child_inum = directory_lookup(par_inode, iter_path->data);
         inode_t *child_inode = get_inode(child_inum);
 
-        if(iter_path->next == NULL && child_inum == -1){
+        if(iter_path->next == NULL && child_inum == -ENOENT){
             int new_inum = alloc_inode();
             inode_t *new_inode = get_inode(new_inum);
             new_inode->mode = mode;
 
-            if(mode & 040000 == 040000){
+            if(dir){
                 directory_put(new_inode, "..", path_lookup(par_dir));
                 directory_put(new_inode, ".", new_inum);
                 new_inode->refs = 2;
@@ -162,15 +161,21 @@ int storage_mknod(const char *path, int mode){
             }
 
             int rv = directory_put(par_inode, iter_path->data, new_inum);
+           if (rv == -1) {
+                free(par_dir);
+                slist_free(path_list);
+                return -1;
+            }
+            
             free(par_dir);
-            slist_free(path_list);
-            return rv;
+            s_free(path_list);
+            return 0;
         } else {
             if(strcmp(par_dir, "/") == 0){
-                strcat(par_dir, iter_path->data);
+                strcpy(par_dir + strlen(par_dir), iter_path->data);
             } else {
-                strcat(par_dir, "/");
-                strcat(par_dir, iter_path->data);
+                strcpy(par_dir + strlen(par_dir), "/");
+                strcpy(par_dir + strlen(par_dir), iter_path->data);
             }
         }
         iter_path = iter_path->next;
@@ -179,8 +184,8 @@ int storage_mknod(const char *path, int mode){
 
 // Change mode attributes of file at given path
 int storage_chmod(const char *path, int mode){
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
         return -1;
     }
     inode_t *inode = get_inode(inum);
@@ -191,13 +196,13 @@ int storage_chmod(const char *path, int mode){
 
 // Remove directory at given path
 int storage_rmdir(const char *path){
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
         return -1;
     }
     inode_t *inode = get_inode(inum);
 
-    if(inode->mode & 040000 != 040000){
+    if(inode->mode != 040755 && inode->mode != 40775 && inode->mode != 16893){
         return -1;
     } else if (strcmp(path, "/") == 0){
         return -1;
@@ -211,48 +216,78 @@ int storage_rmdir(const char *path){
 
 //Unlink file/directory at given path from file system
 int storage_unlink(const char *path){
-    int inum;
-    if((inum = path_lookup(path)) == -ENOENT){
+    int inum = path_lookup(path);
+    if(inum == -ENOENT){
         return -1;
     }
     
     char *par_dir = (char *) malloc(strlen(path) + 1);
+    char *cur_dir = (char *) malloc(strlen(path) + 1);
     if (strcmp(path, "/") == 0) {
         par_dir = "/";
+        cur_dir = "/";
+    } else {
+        strcpy(par_dir, path);
+        strcpy(cur_dir, path);
+
+        int child_dir_length = 0;
+        for (int i = strlen(path) - 1; path[i] != '/'; i--) {
+            child_dir_length += 1;
+        }
+
+        if (child_dir_length == strlen(path) - 1) {
+            par_dir[1] = '\0';
+        } else {
+            par_dir[strlen(path) - child_dir_length - 1] = '\0';
+        }
+
+        cur_dir += strlen(path) - child_dir_length;
     }
 
-    strcpy(par_dir, path);
-
-    char *child_name = strrchr(par_dir, '/') + 1;
-    par_dir[strlen(path) - strlen(child_name)] = '\0';
     int par_inum = path_lookup(par_dir);
     inode_t *par_inode = get_inode(par_inum);
 
-    int rv = directory_delete(par_inode, child_name);
+    int rv = directory_delete(par_inode, cur_dir);
     free(par_dir);
+    free(cur_dir);
     return rv;
 }
 
 // Link from file to file system 
 int storage_link(const char *from, const char *to){
-    int to_inum;
-    if((to_inum = path_lookup(to)) == -ENOENT){
+    int inum = path_lookup(to);
+    if(inum == -ENOENT){
         return -1;
     }
-
+    
     char *par_dir = (char *) malloc(strlen(from) + 1);
+    char *cur_dir = (char *) malloc(strlen(from) + 1);
     if (strcmp(from, "/") == 0) {
         par_dir = "/";
     }
 
     strcpy(par_dir, from);
+    strcpy(cur_dir, from);
 
-    char *child_name = strrchr(par_dir, '/') + 1;
-    par_dir[strlen(from) - strlen(child_name)] = '\0';
+    int child_dir_length = 0;
+    for (int i = strlen(from) - 1; from[i] != '/'; i--) {
+        child_dir_length += 1;
+    }
+
+    if (child_dir_length == strlen(from) - 1) {
+        par_dir[1] = '\0';
+    } else {
+        par_dir[strlen(from) - child_dir_length - 1] = '\0';
+    }
+
     int par_inum = path_lookup(par_dir);
     inode_t *par_inode = get_inode(par_inum);
 
-    int rv = directory_put(par_inode, child_name, to_inum);
+    cur_dir += strlen(from) - child_dir_length;
+
+    int rv = directory_put(par_inode, cur_dir, inum);
+    free(par_dir);
+    free(cur_dir);
     return rv;
 }
 

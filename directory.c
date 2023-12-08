@@ -31,15 +31,14 @@ void directory_init(){
 int directory_lookup(inode_t *di, const char *name){
     dirent_t *block = (dirent_t *)blocks_get_block(di->block);
 
-    dirent_t *dir_ent = block;
-    int inum = 0;
-    while(inum < di->files){
-        dir_ent = (dirent_t *) (dir_ent + (inum * sizeof(dirent_t)));
-
-        if((strcmp(name, dir_ent->name) == 0)){
-            return dir_ent->inum;
+    dirent_t *iter_dir = block;
+    int ind = 0;
+    while(ind < di->files){
+        iter_dir = block + ind;
+        if((strcmp(name, iter_dir->name) == 0)){
+            return iter_dir->inum;
         }
-        inum++;
+        ind++;
     }
     return -ENOENT;
 }
@@ -50,21 +49,21 @@ int path_lookup(const char *path){
         return 0;
     }
 
-    slist_t *head = slist_explode(path + 1, '/');
-    slist_t *cur = head;
+    slist_t *path_list = slist_explode(path + 1, '/');
+    slist_t *iter_path = path_list;
     
     int inum = 0;
-    while (cur != NULL){
+    while (iter_path != NULL){
         inode_t *inode = get_inode(inum);
-        inum = directory_lookup(inode, cur->data);
+        inum = directory_lookup(inode, iter_path->data);
         if(inum == -ENOENT){
-            slist_free(head);
+            slist_free(path_list);
             return -ENOENT;
         }
-        cur = cur->next;
+        iter_path = iter_path->next;
     }
 
-    slist_free(head);
+    slist_free(path_list);
     return inum;
 }
 
@@ -76,18 +75,18 @@ int directory_put(inode_t *di, const char *name, int inum){
     }
 
     dirent_t *dir = (dirent_t *) blocks_get_block(di->block);
-    dirent_t *newFile = (dirent_t *) (dir + (di->files *sizeof(dirent_t)));
-    strcpy(newFile->name, name);
-    newFile->inum = inum;
+    dirent_t *new = dir + di->files;
+    strcpy(new->name, name);
+    new->inum = inum;
 
-    inode_t *inode = get_inode(inum);
-    if(inode->files > 0){
+    inode_t *entry = get_inode(inum);
+    if(entry->files > 0){
         di->refs++;
     }
     di->size += sizeof(dirent_t);
     di->files++;
 
-    inode->refs += 1;
+    entry->refs += 1;
 
     return 0;
 }
@@ -98,10 +97,12 @@ int directory_delete(inode_t *di, const char *name){
     dirent_t *iter_dir = dir;
     int dir_ind = 0;
     while(dir_ind < di->files){
+        iter_dir = dir + dir_ind;
         if(strcmp(name, iter_dir->name) == 0){
             int inum = iter_dir->inum;
+
             if(dir_ind < di->files - 1){
-                dirent_t *next_file = iter_dir + sizeof(dirent_t);
+                dirent_t *next_file = iter_dir + 1;
                 int num_files_below = di->files - dir_ind - 1;
                 memmove(iter_dir, next_file, num_files_below * sizeof(dirent_t));
             }
@@ -113,7 +114,7 @@ int directory_delete(inode_t *di, const char *name){
             di->size -= sizeof(dirent_t);
             di->files--;
 
-            file_inode->refs --;
+            file_inode->refs--;
             if(file_inode->files > 0 && file_inode->refs <= 1){
                 free_inode(inum);
                 free_block(file_inode->block);
@@ -124,7 +125,6 @@ int directory_delete(inode_t *di, const char *name){
 
             return 0;
         }
-        iter_dir += sizeof(dirent_t);
         dir_ind++;
     }
     return -1;
@@ -139,12 +139,12 @@ slist_t *directory_list(const char *path){
     dirent_t *dir = (dirent_t *)blocks_get_block(inode->block);
     
     dirent_t *iter_dir = dir;
-    slist_t *list = NULL;
+    slist_t *list = 0;
     
     int dir_ind = 0;
     while(dir_ind < inode->files){
+        iter_dir = dir + dir_ind;
         list = slist_cons(iter_dir->name, list);
-        iter_dir += sizeof(dirent_t);
         dir_ind++;
     }
 
@@ -157,8 +157,9 @@ void print_directory(inode_t *di){
     dirent_t *iter_dir = dir;
     int dir_ind = 0;
     while(dir_ind < di->files){
+        iter_dir = dir + dir_ind;
         printf("%s\n", iter_dir->name);
-        iter_dir += sizeof(dirent_t);
         dir_ind++;
     }
+    return;
 }
