@@ -2,7 +2,7 @@
  * @file blocks.c
  * @author CS3650 staff
  *
- * Implementatino of a block-based abstraction over a disk image file.
+ * Implementation of a block-based abstraction over a disk image file.
  */
 #define _GNU_SOURCE
 #include <string.h>
@@ -21,9 +21,6 @@
 #include "blocks.h"
 
 const int BLOCK_COUNT = 256; // we split the "disk" into 256 blocks
-const int BITMAP_BLOCKS = 1; // number of blocks dedicated to data and inode bitmaps
-const int INODE_BLOCKS = 2; // number of blocks dedicated inodes
-const int DATA_BLOCKS = BLOCK_COUNT - BITMAP_BLOCKS - INODE_BLOCKS; // number of blocks dedicated to data
 const int BLOCK_SIZE = 4096; // = 4K
 const int NUFS_SIZE = BLOCK_SIZE * BLOCK_COUNT; // = 1MB
 
@@ -64,7 +61,7 @@ void blocks_init(const char *image_path) {
 }
 
 // Close the disk image.
-void blocks_free() {
+void blockslist_free() {
   int rv = munmap(blocks_base, NUFS_SIZE);
   assert(rv == 0);
 }
@@ -88,7 +85,7 @@ void *get_inode_bitmap() {
 int alloc_block() {
   void *bbm = get_blocks_bitmap();
 
-  for (int ii = 1; ii < BLOCK_COUNT; ++ii) {
+  for (int ii = 3; ii < BLOCK_COUNT; ++ii) {
     if (!bitmap_get(bbm, ii)) {
       bitmap_put(bbm, ii, 1);
       printf("+ alloc_block() -> %d\n", ii);

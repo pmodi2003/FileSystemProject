@@ -12,11 +12,6 @@
 #include <stdio.h>
 
 extern const int BLOCK_COUNT; // we split the "disk" into blocks (default = 256)
-extern const int BITMAP_BLOCKS; // number of blocks dedicated to data and inode bitmaps
-// sizeof(inode_t) = 20 bytes 
-// 20 bytes * 256 inodes (one for each data block) = 5120 bytes --> 2 blocks
-extern const int INODE_BLOCKS; // number of blocks dedicated inodes
-extern const int DATA_BLOCKS; // number of blocks dedicated to data
 extern const int BLOCK_SIZE;  // default = 4K
 extern const int NUFS_SIZE;   // default = 1MB
 
@@ -41,7 +36,7 @@ void blocks_init(const char *image_path);
 /**
  * Close the disk image.
  */
-void blocks_free();
+void blockslist_free();
 
 /**
  * Get the block with the given index, returning a pointer to its start.

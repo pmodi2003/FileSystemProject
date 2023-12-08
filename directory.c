@@ -1,165 +1,152 @@
-/**
- *@file directory.c
- *
- * Implementation of directory manipulation
- */
-
-#include <errno.h>
-#include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
 #include "directory.h"
 #include "inode.h"
-#include "helpers/slist.h"
+#include "slist.h"
 
-// Initialize Root Directory with read and write permissions (root->mode)
-// It initially has the self reference "."
-// All other directories have a self-reference and a parent reference ".."
-// Self reference does not count as a reference
-void directory_init(){
+// Initializes the root directory
+void directory_init() {
     int inum = alloc_inode();
-    inode_t *root = get_inode(inum);
-    root->mode = 040755;
+    inode_t *inode = get_inode(inum);
+    inode->mode = 040755;
 
-    directory_put(root, ".", inum);
-    root->refs = 1;
-    root->files = 1;
+    directory_put(inode, ".", inum);
+    inode->refs = 1;
+    inode->nodes = 1;
 }
 
-// Return inum for file with given name in given directory
-int directory_lookup(inode_t *di, const char *name){
-    dirent_t *block = (dirent_t *)blocks_get_block(di->block);
+// Finds the file with the given name in the given directory
+int directory_lookup(inode_t *dd, const char *name) {
+    dirent_t *block = (dirent_t *) blocks_get_block(dd->block);
 
-    dirent_t *iter_dir = block;
-    int ind = 0;
-    while(ind < di->files){
-        iter_dir = block + ind;
-        if((strcmp(name, iter_dir->name) == 0)){
-            return iter_dir->inum;
+    // Iterate through the nodes in this directory
+    dirent_t *curr_dirent = block;
+    int curr_i = 0;
+    while (curr_i < dd->nodes) {
+        curr_dirent = block + curr_i;
+        if (strcmp(curr_dirent->name, name) == 0) {
+            return curr_dirent->inum;
         }
-        ind++;
+        curr_i += 1;
     }
-    return -ENOENT;
+
+    return -1;
 }
 
-// Return inum for file at given path
-int path_lookup(const char *path){
+// Gets the inum at the given path.
+int path_lookup(const char *path) {
     if (strcmp("/", path) == 0) {
         return 0;
     }
 
-    slist_t *path_list = slist_explode(path + 1, '/');
-    slist_t *iter_path = path_list;
-    
-    int inum = 0;
-    while (iter_path != NULL){
-        inode_t *inode = get_inode(inum);
-        inum = directory_lookup(inode, iter_path->data);
-        if(inum == -ENOENT){
-            slist_free(path_list);
-            return -ENOENT;
+    // Iterate through the path, looking up each directory
+    int curr_dir_inum = 0;
+    slist_t *head = slist_explode(path + 1, '/');
+    slist_t *cur = head;
+    while (cur != NULL) {
+        inode_t *curr_dir_inode = get_inode(curr_dir_inum);
+        curr_dir_inum = directory_lookup(curr_dir_inode, cur->data);
+        if (curr_dir_inum == -1) {
+            slist_free(head);
+            return -1;
         }
-        iter_path = iter_path->next;
+
+        cur = cur->next;
     }
 
-    slist_free(path_list);
-    return inum;
+    slist_free(head);
+    return curr_dir_inum;
 }
 
-// Add file to given directory
-int directory_put(inode_t *di, const char *name, int inum){
-    if (di->files == BLOCK_SIZE / sizeof(dirent_t)) {
-        printf("Can't add new file due to full directory.\n");
+// Creates a new directory entry in the given directory with the given name and inum.
+int directory_put(inode_t *dd, const char *name, int inum) {
+    if (dd->nodes == BLOCK_SIZE / sizeof(dirent_t)) {
         return -1;
     }
 
-    dirent_t *dir = (dirent_t *) blocks_get_block(di->block);
-    dirent_t *new = dir + di->files;
-    strcpy(new->name, name);
-    new->inum = inum;
+    inode_t *entry_node = get_inode(inum);
 
-    inode_t *entry = get_inode(inum);
-    if(entry->files > 0){
-        di->refs++;
+    // Update the directory data block
+    dirent_t *block = (dirent_t *) blocks_get_block(dd->block);
+    dirent_t *new_entry = block + dd->nodes;
+    strcpy(new_entry->name, name);
+    new_entry->inum = inum;
+
+    // Update the directory inode
+    if (entry_node->nodes > 0) {  
+        dd->refs += 1;
     }
-    di->size += sizeof(dirent_t);
-    di->files++;
-
-    entry->refs += 1;
+    dd->size += sizeof(dirent_t);
+    dd->nodes += 1;
+    entry_node->refs += 1;
 
     return 0;
 }
 
-// Delete given file from given directory
-int directory_delete(inode_t *di, const char *name){
-    dirent_t *dir = (dirent_t *)blocks_get_block(di->block);
-    dirent_t *iter_dir = dir;
-    int dir_ind = 0;
-    while(dir_ind < di->files){
-        iter_dir = dir + dir_ind;
-        if(strcmp(name, iter_dir->name) == 0){
-            int inum = iter_dir->inum;
+// Deletes the inode with the given name from the given directory.
+int directory_delete(inode_t *dd, const char *name) {
+    dirent_t *dir = (dirent_t *) blocks_get_block(dd->block);
+    dirent_t *curr_dirent = dir;
 
-            if(dir_ind < di->files - 1){
-                dirent_t *next_file = iter_dir + 1;
-                int num_files_below = di->files - dir_ind - 1;
-                memmove(iter_dir, next_file, num_files_below * sizeof(dirent_t));
-            }
-            
-            inode_t *file_inode = get_inode(inum);
-            if(file_inode->files > 0){
-                di->refs--;
-            }
-            di->size -= sizeof(dirent_t);
-            di->files--;
+    // Iterate through the nodes in this directory
+    int curr_i = 0;
+    while (curr_i < dd->nodes) {
+        curr_dirent = dir + curr_i;
+        if (strcmp(curr_dirent->name, name) == 0) {
+            int entry_inum = curr_dirent->inum;
 
-            file_inode->refs--;
-            if(file_inode->files > 0 && file_inode->refs <= 1){
-                free_inode(inum);
-                free_block(file_inode->block);
-            } else if (file_inode->files == 0 && file_inode->refs == 0){
-                free_inode(inum);
-                free_block(file_inode->block);
+            // Update directory data block
+            if (curr_i < dd->nodes - 1) {
+                dirent_t *next_entry = curr_dirent + 1;
+                int num_nodes = dd->nodes - curr_i - 1;
+                memmove(curr_dirent, next_entry, num_nodes * sizeof(dirent_t));
+            }
+
+            // Update directory inode
+            inode_t *entry_inode = get_inode(entry_inum);
+            if (entry_inode->nodes > 0) {  
+                dd->refs -= 1;
+            }
+            dd->size -= sizeof(dirent_t);
+            dd->nodes -= 1;
+
+            // Update entry inode
+            entry_inode->refs -= 1;
+            if (entry_inode->nodes > 0 && entry_inode->refs <= 1) { 
+                free_block(entry_inode->block);
+            }
+            else if (entry_inode->nodes == 0 && entry_inode->refs == 0) { 
+                free_inode(entry_inum);
+                free_block(entry_inode->block);
             }
 
             return 0;
         }
-        dir_ind++;
+        curr_i += 1;
     }
+
     return -1;
 }
 
-// Return list of files at given path
-slist_t *directory_list(const char *path){
+// Lists the contents of the directory specified by the given path.
+slist_t *directory_list(const char *path) {
     int inum = path_lookup(path);
     assert(inum >= 0);
-    
     inode_t *inode = get_inode(inum);
-    dirent_t *dir = (dirent_t *)blocks_get_block(inode->block);
-    
-    dirent_t *iter_dir = dir;
+    dirent_t *block = (dirent_t *) blocks_get_block(inode->block);
+
+    dirent_t *curr_dirent = block;
     slist_t *list = 0;
-    
-    int dir_ind = 0;
-    while(dir_ind < inode->files){
-        iter_dir = dir + dir_ind;
-        list = slist_cons(iter_dir->name, list);
-        dir_ind++;
+
+    int curr_i = 0;
+    while (curr_i < inode->nodes) {
+        curr_dirent = block + curr_i;
+        list = slist_cons(curr_dirent->name, list);
+        curr_i += 1;
     }
 
     return list;
-}
-
-// Print contents of given directory
-void print_directory(inode_t *di){
-    dirent_t *dir = (dirent_t *) blocks_get_block(di->block);
-    dirent_t *iter_dir = dir;
-    int dir_ind = 0;
-    while(dir_ind < di->files){
-        iter_dir = dir + dir_ind;
-        printf("%s\n", iter_dir->name);
-        dir_ind++;
-    }
-    return;
 }

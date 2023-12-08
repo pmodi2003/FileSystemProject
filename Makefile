@@ -1,7 +1,7 @@
 
-SRCS := $(wildcard *.c) helpers/slist.c helpers/blocks.c helpers/bitmap.c
+SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
-HDRS := $(wildcard *.h) helpers/slist.h helpers/blocks.h helpers/bitmap.h
+HDRS := $(wildcard *.h)
 
 CFLAGS := -g `pkg-config fuse --cflags`
 LDLIBS := `pkg-config fuse --libs`
@@ -13,7 +13,7 @@ nufs: $(OBJS)
 	gcc $(CFLAGS) -c -o $@ $<
 
 clean: unmount
-	rm -f nufs *.o test.log data.nufs helpers/*.o
+	rm -f nufs *.o test.log data.nufs
 	rmdir mnt || true
 
 mount: nufs

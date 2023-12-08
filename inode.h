@@ -1,24 +1,24 @@
 // Inode manipulation routines.
 //
-// Feel free to use as inspiration. Provided as-is.
+// Feel free to use as inspiration.
 
 // based on cs3650 starter code
+
 #ifndef INODE_H
 #define INODE_H
 
+#include "blocks.h"
 
-#include "helpers/blocks.h"
-
-extern const int NUM_INODES; // number of inodes in FS (1 for each block -> 256 inodes)
-extern const int INODES_START_BLOCK; // block where inodes start
+extern const int NUM_INODES; // number of inodes in file system (default = 256)
+extern const int INODE_BLOCK; // block where inodes begin
 
 // inode_t size: 20 bytes
 typedef struct inode {
-  int refs;  // reference count
-  int mode;  // permission & type
-  int size;  // bytes
-  int block; // single block pointer (if max file size <= 4K)
-  int files; // number of files in directory (if type = file, then 0)
+  int refs;             // reference count
+  int mode;             // permission & type
+  int size;             // sie of inode
+  int block;            // single block pointer/number (max file size <= 4K)
+  int nodes;          // number of nodes in this inode (files have 0 nodes)
 } inode_t;
 
 void print_inode(inode_t *node);

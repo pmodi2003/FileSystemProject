@@ -2,7 +2,6 @@
 
 #include <assert.h>
 #include <bsd/string.h>
-#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,11 +13,17 @@
 #include <fuse.h>
 
 #include "storage.h"
+#include "directory.h"
 
 // implementation for: man 2 access
 // Checks if a file exists.
 int nufs_access(const char *path, int mask) {
-  int rv = storage_access(path);
+  int rv = 0;
+
+  if (path_lookup(path) == -1) {
+    return -ENOENT;
+  } 
+
   printf("access(%s, %04o) -> %d\n", path, mask, rv);
   return rv;
 }
@@ -28,8 +33,7 @@ int nufs_access(const char *path, int mask) {
 // This is a crucial function.
 int nufs_getattr(const char *path, struct stat *st) {
   int rv = storage_stat(path, st);
-  st->st_uid = getuid();
-  printf("getattr(%s) -> (%d) {mode: %04o, size: %ld}\n", path, rv, st->st_mode,
+  printf("getattr(%s) -> (%d) {mode: %04o, size: %ld}\n", path, rv, st->st_mode, 
           st->st_size);
   return rv;
 }
@@ -37,51 +41,30 @@ int nufs_getattr(const char *path, struct stat *st) {
 // implementation for: man 2 readdir
 // lists the contents of a directory
 int nufs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                 off_t offset, struct fuse_file_info *fi) {
-  struct stat st;
-  int rv;
-  char cur_dir[strlen(path) + 48];
+                   off_t offset, struct fuse_file_info *info) {
+    int rv = 0;
+    struct stat stat;
+    slist_t* dir_n = storage_list(path);
 
-  slist_t *dir = storage_list(path);
-  slist_t *iter_dir = dir;
-  while (iter_dir != NULL){
-    if(strcmp(path, "/") == 0){
-      cur_dir[0] = '/';
-      
-      int cur_dir_length = strlen(iter_dir->data);
-      strncpy(cur_dir + 1, iter_dir->data, 48);
+    while (dir_n != NULL) {
+        char entry_path[256];
+        if (strcmp(path, "/") == 0) {
+            snprintf(entry_path, sizeof(entry_path), "/%s", dir_n->data);
+        } else {
+            snprintf(entry_path, sizeof(entry_path), "%s/%s", path, dir_n->data);
+        }
 
-      cur_dir[cur_dir_length + 1] = '\0';
+        rv = storage_stat(entry_path, &stat);
+        assert(rv == 0);
 
-      rv = nufs_getattr(cur_dir, &st);
-      assert(rv == 0);
-      if(filler(buf, iter_dir->data, &st, 0) != 0){
-        break;
-      }
-    } else {
-      strncpy(cur_dir, path, strlen(path));
-      cur_dir[strlen(path)] = '/';
-
-      int cur_dir_length = strlen(iter_dir->data);
-      strncpy(cur_dir + strlen(path) + 1, iter_dir->data, 48);
-      if (cur_dir_length > 48) {
-        cur_dir_length = 48;
-      }
-      cur_dir[cur_dir_length + strlen(path) + 1] = '\0';
-
-      rv = nufs_getattr(cur_dir, &st);
-      assert(rv == 0);
-      if(filler(buf, iter_dir->data, &st, 0) != 0){
-        break;
-      }    
+        filler(buf, dir_n->data, &stat, 0);
+        dir_n = dir_n->next;
     }
-    iter_dir = iter_dir->next;
-  }
 
-  slist_free(dir);
+    slist_free(dir_n);
 
-  printf("readdir(%s) -> %d\n", path, rv);
-  return 0;
+    printf("readdir(%s) -> %d\n", path, rv);
+    return 0;
 }
 
 // mknod makes a filesystem object like a file or directory
@@ -89,7 +72,7 @@ int nufs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 // Note, for this assignment, you can alternatively implement the create
 // function.
 int nufs_mknod(const char *path, mode_t mode, dev_t rdev) {
-  int rv = storage_mknod(path, mode, 0);
+  int rv = storage_mknod(path, mode);
   printf("mknod(%s, %04o) -> %d\n", path, mode, rv);
   return rv;
 }
@@ -97,23 +80,26 @@ int nufs_mknod(const char *path, mode_t mode, dev_t rdev) {
 // most of the following callbacks implement
 // another system call; see section 2 of the manual
 int nufs_mkdir(const char *path, mode_t mode) {
-  int rv = storage_mknod(path, mode | 040000, 1);
-  printf("mkdir(%s, %04o) -> %d\n", path, mode, rv);
+  int rv = nufs_mknod(path, mode | 040000, 0);
+  printf("mkdir(%s) -> %d\n", path, rv);
   return rv;
 }
 
+// Unlink the provided path in file storage.
 int nufs_unlink(const char *path) {
   int rv = storage_unlink(path);
   printf("unlink(%s) -> %d\n", path, rv);
   return rv;
 }
 
+// Link from the from path passed in to the to path passed in.
 int nufs_link(const char *from, const char *to) {
   int rv = storage_link(from, to);
   printf("link(%s => %s) -> %d\n", from, to, rv);
   return rv;
 }
 
+// Remove the directory at the path passed in.
 int nufs_rmdir(const char *path) {
   int rv = storage_rmdir(path);
   printf("rmdir(%s) -> %d\n", path, rv);
@@ -128,12 +114,14 @@ int nufs_rename(const char *from, const char *to) {
   return rv;
 }
 
+// Change the permissions associated with the path passed in.
 int nufs_chmod(const char *path, mode_t mode) {
   int rv = storage_chmod(path, mode);
   printf("chmod(%s, %04o) -> %d\n", path, mode, rv);
   return rv;
 }
 
+// Truncates the file at the given path to a provided length.
 int nufs_truncate(const char *path, off_t size) {
   int rv = storage_truncate(path, size);
   printf("truncate(%s, %ld bytes) -> %d\n", path, size, rv);
@@ -150,7 +138,7 @@ int nufs_open(const char *path, struct fuse_file_info *fi) {
   return rv;
 }
 
-// Actually read data from file at given path
+// Actually read data
 int nufs_read(const char *path, char *buf, size_t size, off_t offset,
               struct fuse_file_info *fi) {
   int rv = storage_read(path, buf, size, offset);
@@ -158,7 +146,7 @@ int nufs_read(const char *path, char *buf, size_t size, off_t offset,
   return rv;
 }
 
-// Actually write data to file at given path
+// Actually write data
 int nufs_write(const char *path, const char *buf, size_t size, off_t offset,
                struct fuse_file_info *fi) {
   int rv = storage_write(path, buf, size, offset);
@@ -188,6 +176,7 @@ void nufs_init_ops(struct fuse_operations *ops) {
   ops->getattr = nufs_getattr;
   ops->readdir = nufs_readdir;
   ops->mknod = nufs_mknod;
+  // ops->create   = nufs_create; // alternative to mknod
   ops->mkdir = nufs_mkdir;
   ops->link = nufs_link;
   ops->unlink = nufs_unlink;
@@ -206,6 +195,7 @@ struct fuse_operations nufs_ops;
 
 int main(int argc, char *argv[]) {
   assert(argc > 2 && argc < 6);
+  // printf("TODO: mount %s as data file\n", argv[--argc]);
   storage_init(argv[--argc]);
   nufs_init_ops(&nufs_ops);
   return fuse_main(argc, argv, &nufs_ops, NULL);
